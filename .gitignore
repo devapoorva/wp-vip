@@ -1,0 +1,26 @@
+/.vagrant/
+/node_modules/
+/plugins/vendor/
+/console.log
+/.env
+/debug.log
+
+# Uploads directory
+/uploads/
+
+# Leftover core/plugin upgrade files
+/upgrade/
+
+# mu-plugins; these are managed at the platform-level
+/mu-plugins/
+
+# drop-ins; these are managed at the platform-level
+/db.php
+
+# Ignore temporary OS files
+.DS_Store
+.DS_Store?
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

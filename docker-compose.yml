@@ -1,0 +1,116 @@
+version: '3.6'
+
+services:
+
+  # Route HTTP requests to specific containers based on the HTTP_HOST header.
+  nginx-proxy:
+    image: jwilder/nginx-proxy:1.0.4
+    depends_on:
+      - mkcert
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - cert_data:/etc/nginx/certs
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+      - ./local/docker/nginx-proxy/conf.d/custom.conf:/etc/nginx/conf.d/custom.conf
+
+  # Create a local DNS server that maps all *.local.wpenv.net to this environment when not connected to the internet.
+  # Append `--log-queries --log-facility=-` to the command to enable verbose logging to stderr of all lookups.
+  dnsmasq:
+    image: andyshinn/dnsmasq:2.83
+    # Enable only when needed.
+    # ports:
+    #  - "53:53/udp"
+    cap_add:
+      - NET_ADMIN
+    command: --address=/${DEV_URL:-local.wpenv.net}/${DOCKER_HOST_IP:-"127.0.0.1"} --server=1.1.1.1
+
+  # Generate SSL certs for the local development environment.
+  mkcert:
+    image: ghcr.io/xwp/vip-site-template--mkcert:1.0.0
+    build: ./local/docker/mkcert
+    volumes:
+      - cert_data:/root/.local/share/mkcert
+    command: mkcert -cert-file "${DEV_URL:-local.wpenv.net}.crt" -key-file "${DEV_URL:-local.wpenv.net}.key" "${DEV_URL:-local.wpenv.net}" "*.${DEV_URL:-local.wpenv.net}"
+
+  # Sync VIP MySQL container and it's configurations - https://github.com/Automattic/vip-cli/blob/549a45a37bc254a39dba9ed23ac88174a35aa1da/assets/dev-env.lando.template.yml.ejs#L74-L75
+  db:
+    image: mysql:8
+    command: --sql-mode=ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION --max_allowed_packet=67M --default-authentication-plugin=mysql_native_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: wordpress
+      MYSQL_PASSWORD: wordpress
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:5.2.1
+    depends_on:
+      - db
+    environment:
+      VIRTUAL_HOST: phpmyadmin.${DEV_URL:-local.wpenv.net}
+      PMA_HOST: db
+      PMA_USER: root
+      PMA_PASSWORD: root
+
+  # Capture all emails sent by WordPress.
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    environment:
+      VIRTUAL_HOST: mail.${DEV_URL:-local.wpenv.net}
+      VIRTUAL_PORT: 8025
+
+  # For WP object caching.
+  memcached:
+    image: memcached:1.6
+
+  # Review Xdebug profiling data.
+  webgrind:
+    image: jokkedk/webgrind:latest
+    volumes:
+      - webgrind_data:/tmp
+    environment:
+      VIRTUAL_HOST: webgrind.${DEV_HOSTNAME:-local.wpenv.net}
+
+  # Enable VIP ElasticSearch https://docs.wpvip.com/technical-references/elasticsearch/
+  elasticsearch:
+    # Sync version with VIP settings https://github.com/Automattic/vip-cli/blob/0e5d5a1fc2761fc67d5e59ab3d817e7724b139e6/assets/dev-env.lando.template.yml.ejs#L99
+    image: elasticsearch:7.17.2
+    environment:
+      - discovery.type=single-node
+      - cluster.name=elasticsearch
+      - xpack.security.enabled=false
+      - bootstrap.memory_lock=true
+    volumes:
+        - elasticsearch_data:/usr/share/elasticsearch/data
+
+  wordpress:
+    depends_on:
+      - db
+    build: ./local/docker/wordpress
+    image: ghcr.io/xwp/vip-site-template--wordpress:1.0.0
+    restart: always
+    volumes:
+      - ./local/public:/var/www/html
+      - .:/var/www/html/wp-content
+      - ./vip-config:/var/www/html/vip-config # Match the VIP production setup where vip-config is mapped to the root directory.
+      - webgrind_data:/tmp
+    environment:
+      VIRTUAL_HOST: ${DEV_URL:-local.wpenv.net}, *.${DEV_URL:-local.wpenv.net}
+      SMTPSERVER: mailhog
+      EMAIL: local@${DEV_URL:-local.wpenv.net}
+      XDEBUG_MODE: debug,coverage # Append `profile` to enable profiling or leave empty to disable all.
+      XDEBUG_CONFIG: client_host=host.docker.internal discover_client_host=0 # Required for MacOS only.
+      WP_PHPUNIT__TESTS_CONFIG: /var/www/html/wp-tests-config.php
+
+volumes:
+  db_data:
+  cert_data:
+  webgrind_data:
+  elasticsearch_data:

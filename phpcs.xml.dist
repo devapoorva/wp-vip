@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<ruleset name="VIP Go Coding Standards">
+	<arg name="extensions" value="php" />
+	<arg name="colors" />
+	<arg value="s" /><!-- Show sniff codes in all reports. -->
+	<arg value="p" /><!-- Show progress. -->
+
+	<rule ref="WordPress-VIP-Go" />
+
+	<file>client-mu-plugins</file>
+	<file>local/public</file>
+	<file>plugins</file>
+	<file>themes</file>
+	<file>vip-config</file>
+
+	<exclude-pattern>themes/twentytwenty</exclude-pattern>
+	<exclude-pattern>plugins/vendor</exclude-pattern>
+	<exclude-pattern>local/public/wp</exclude-pattern>
+</ruleset>
